@@ -28,6 +28,18 @@ This command will guide you through setting up an AutoRoom Source by asking some
 
 There are some additional configuration options for AutoRoom Sources that you can set by using `[p]autoroomset modify`. You can also check out `[p]autoroomset access`, which controls whether admins (default yes) or moderators (default no) can see and join private AutoRooms. For an overview of all of your settings, use `[p]autoroomset settings`.
 
+#### Role-Based Permissions
+
+By default, new AutoRooms copy permission overwrites from their AutoRoom Source. To use explicit role access rules for a source instead, configure the roles and select role mode:
+
+```
+[p]autoroomset modify permissions allow <source_voice_channel> <role>
+[p]autoroomset modify permissions deny <source_voice_channel> <role>
+[p]autoroomset modify permissions remove <source_voice_channel> <role>
+```
+
+Adding an allowed or denied role automatically enables role mode for that source. In role mode, unconfigured source-channel overwrites are not copied; the room's normal public, locked, or private access is used as the baseline, and configured roles are allowed or denied. Admin, moderator, bot-role, and AutoRoom-owner access continue to follow their existing settings. To return to copied permissions, use `[p]autoroomset modify permissions clone <source_voice_channel>`; to enable role mode without adding a rule, use `[p]autoroomset modify permissions roles <source_voice_channel>`.
+
 #### Member Roles and Hidden Sources
 
 The AutoRoom Source will behave in a certain way, depending on what permissions it has. If the `@everyone` role is denied the connect permission (and optionally the view channel permission), the AutoRoom Source and AutoRooms will behave in a member role style. Any roles that are allowed to connect on the AutoRoom Source will be considered the "member roles". Only members of the server with one or more of these roles will be able to utilize these AutoRooms and their Sources.
