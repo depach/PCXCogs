@@ -572,6 +572,23 @@ class AutoRoom(
                 new_legacy_text_channel.id
             )
 
+        room_chat = new_legacy_text_channel or new_voice_channel
+        commands_message = (
+            "AutoRoom commands:\n"
+            "`.autoroom settings` - View room access and settings."
+        )
+        if autoroom_source_config["room_type"] != "server":
+            commands_message += (
+                "\n`.autoroom name <name>` - Rename the room."
+                "\n`.autoroom bitrate <kbps>` - Change the bitrate."
+                "\n`.autoroom users <limit>` - Set the user limit (0 removes it)."
+                "\n`.autoroom public` / `.autoroom locked` / `.autoroom private` - Change room access."
+                "\n`.autoroom allow <member or role>` - Allow someone into the room."
+                "\n`.autoroom deny <member or role>` - Deny someone from the room."
+            )
+        with suppress(Exception):
+            await room_chat.send(commands_message)
+
         # Send text chat hint if enabled
         if autoroom_source_config["text_channel_hint"]:
             with suppress(Exception):
@@ -580,10 +597,7 @@ class AutoRoom(
                     self.get_template_data(member),
                 )
                 if hint:
-                    if new_legacy_text_channel:
-                        await new_legacy_text_channel.send(hint)
-                    else:
-                        await new_voice_channel.send(hint[:2000].strip())
+                    await room_chat.send(hint[:2000].strip())
 
     @staticmethod
     async def _process_autoroom_delete(
