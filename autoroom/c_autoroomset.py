@@ -72,6 +72,21 @@ class AutoRoomSetCommands(MixinMeta, ABC):
                 "Destination category",
                 f"#{dest_category.name}" if dest_category else "INVALID CATEGORY",
             )
+            autoroom_section.add(
+                "Permission mode",
+                avc_settings["permission_mode"].capitalize(),
+            )
+            for setting, label in (
+                ("role_access_allow", "Roles allowed"),
+                ("role_access_deny", "Roles denied"),
+            ):
+                roles = [
+                    ctx.guild.get_role(role_id)
+                    for role_id in avc_settings[setting]
+                ]
+                role_names = [role.name for role in roles if role]
+                if role_names:
+                    autoroom_section.add(label, ", ".join(role_names))
             if avc_settings["legacy_text_channel"]:
                 autoroom_section.add(
                     "Legacy Text Channel",
@@ -445,6 +460,129 @@ class AutoRoomSetCommands(MixinMeta, ABC):
     @autoroomset.group(aliases=["edit"])
     async def modify(self, ctx: commands.Context) -> None:
         """Modify an existing AutoRoom Source."""
+
+    @modify.group(name="permissions")
+    async def modify_permissions(self, ctx: commands.Context) -> None:
+        """Choose cloned permissions or configure role access."""
+
+    @modify_permissions.command(name="clone")
+    async def modify_permissions_clone(
+        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+    ) -> None:
+        """Copy permission overwrites from the AutoRoom Source (default)."""
+        if not ctx.guild:
+            return
+        if await self.get_autoroom_source_config(autoroom_source):
+            await self.config.custom(
+                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+            ).permission_mode.set("clone")
+            await ctx.send(
+                success(
+                    f"New AutoRooms created by **{autoroom_source.mention}** will clone source permissions."
+                )
+            )
+        else:
+            await ctx.send(
+                error(
+                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                )
+            )
+
+    @modify_permissions.command(name="roles")
+    async def modify_permissions_roles(
+        self, ctx: commands.Context, autoroom_source: discord.VoiceChannel
+    ) -> None:
+        """Use configured role allow/deny rules instead of cloning permissions."""
+        if not ctx.guild:
+            return
+        if await self.get_autoroom_source_config(autoroom_source):
+            await self.config.custom(
+                "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+            ).permission_mode.set("roles")
+            await ctx.send(
+                success(
+                    f"New AutoRooms created by **{autoroom_source.mention}** will use role access rules."
+                )
+            )
+        else:
+            await ctx.send(
+                error(
+                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                )
+            )
+
+    @modify_permissions.command(name="allow")
+    async def modify_permissions_allow(
+        self,
+        ctx: commands.Context,
+        autoroom_source: discord.VoiceChannel,
+        role: discord.Role,
+    ) -> None:
+        """Allow a role into new AutoRooms and enable role access mode."""
+        await self._save_role_access(ctx, autoroom_source, role, "allow")
+
+    @modify_permissions.command(name="deny")
+    async def modify_permissions_deny(
+        self,
+        ctx: commands.Context,
+        autoroom_source: discord.VoiceChannel,
+        role: discord.Role,
+    ) -> None:
+        """Deny a role access to new AutoRooms and enable role access mode."""
+        await self._save_role_access(ctx, autoroom_source, role, "deny")
+
+    @modify_permissions.command(name="remove")
+    async def modify_permissions_remove(
+        self,
+        ctx: commands.Context,
+        autoroom_source: discord.VoiceChannel,
+        role: discord.Role,
+    ) -> None:
+        """Remove a role from the allow and deny lists."""
+        await self._save_role_access(ctx, autoroom_source, role, "remove")
+
+    async def _save_role_access(
+        self,
+        ctx: commands.Context,
+        autoroom_source: discord.VoiceChannel,
+        role: discord.Role,
+        access: str,
+    ) -> None:
+        """Save a role allow/deny entry for an AutoRoom Source."""
+        if not ctx.guild:
+            return
+        if not await self.get_autoroom_source_config(autoroom_source):
+            await ctx.send(
+                error(
+                    f"**{autoroom_source.mention}** is not an AutoRoom Source channel."
+                )
+            )
+            return
+
+        source_config = self.config.custom(
+            "AUTOROOM_SOURCE", str(ctx.guild.id), str(autoroom_source.id)
+        )
+        allow_roles = await source_config.role_access_allow()
+        deny_roles = await source_config.role_access_deny()
+        if role.id in allow_roles:
+            allow_roles.remove(role.id)
+        if role.id in deny_roles:
+            deny_roles.remove(role.id)
+        if access == "allow":
+            allow_roles.append(role.id)
+        elif access == "deny":
+            deny_roles.append(role.id)
+        await source_config.role_access_allow.set(allow_roles)
+        await source_config.role_access_deny.set(deny_roles)
+        if access != "remove":
+            await source_config.permission_mode.set("roles")
+
+        if access == "remove":
+            message = f"**{role.name}** was removed from the role access rules."
+        else:
+            access_label = "allowed" if access == "allow" else "denied"
+            message = f"**{role.name}** is now {access_label} in new AutoRooms. Role access mode is enabled."
+        await ctx.send(success(message))
 
     @modify.command(name="category")
     async def modify_category(

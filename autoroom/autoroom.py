@@ -47,9 +47,14 @@ class AutoRoom(
         "mod_access": False,
         "bot_access": [],
     }
-    default_autoroom_source_settings: ClassVar[dict[str, int | str | None]] = {
+    default_autoroom_source_settings: ClassVar[
+        dict[str, int | str | list[int] | None]
+    ] = {
         "dest_category_id": None,
         "room_type": "public",
+        "permission_mode": "clone",
+        "role_access_allow": [],
+        "role_access_deny": [],
         "legacy_text_channel": False,
         "text_channel_hint": None,
         "text_channel_topic": "",
@@ -441,31 +446,42 @@ class AutoRoom(
         # Generate overwrites
         perms = Perms()
         dest_perms = dest_category.permissions_for(dest_category.guild.me)
-        source_overwrites = autoroom_source.overwrites or {}
-        member_roles = self.get_member_roles(autoroom_source)
-        for target, permissions in source_overwrites.items():
-            # We can't put manage_roles in overwrites, so just get rid of it
-            permissions.update(manage_roles=None)
-            # Check each permission for each overwrite target to make sure the bot has it allowed in the dest category
-            failed_checks = {}
-            for name, value in permissions:
-                if value is not None:
-                    permission_check_result = getattr(dest_perms, name)
-                    if not permission_check_result:
-                        # If the bot doesn't have the permission allowed in the dest category, just ignore it. Too bad!
-                        failed_checks[name] = None
-            if failed_checks:
-                permissions.update(**failed_checks)
-            perms.overwrite(target, permissions)
-            if member_roles and target in member_roles:
-                # If we have member roles and this target is one, apply AutoRoom type permissions
-                perms.update(target, autoroom_source_config["perms"]["access"])
-
-        # Update overwrites for default role to account for AutoRoom type
-        if member_roles:
-            perms.update(guild.default_role, autoroom_source_config["perms"]["deny"])
-        else:
+        if autoroom_source_config["permission_mode"] == "roles":
             perms.update(guild.default_role, autoroom_source_config["perms"]["access"])
+            for role_id in autoroom_source_config["role_access_allow"]:
+                role = guild.get_role(role_id)
+                if role:
+                    perms.update(role, autoroom_source_config["perms"]["allow"])
+            for role_id in autoroom_source_config["role_access_deny"]:
+                role = guild.get_role(role_id)
+                if role:
+                    perms.update(role, autoroom_source_config["perms"]["deny"])
+        else:
+            source_overwrites = autoroom_source.overwrites or {}
+            member_roles = self.get_member_roles(autoroom_source)
+            for target, permissions in source_overwrites.items():
+                # We can't put manage_roles in overwrites, so just get rid of it
+                permissions.update(manage_roles=None)
+                # Check each permission for each overwrite target to make sure the bot has it allowed in the dest category
+                failed_checks = {}
+                for name, value in permissions:
+                    if value is not None:
+                        permission_check_result = getattr(dest_perms, name)
+                        if not permission_check_result:
+                            # If the bot doesn't have the permission allowed in the dest category, just ignore it. Too bad!
+                            failed_checks[name] = None
+                if failed_checks:
+                    permissions.update(**failed_checks)
+                perms.overwrite(target, permissions)
+                if member_roles and target in member_roles:
+                    # If we have member roles and this target is one, apply AutoRoom type permissions
+                    perms.update(target, autoroom_source_config["perms"]["access"])
+
+            # Update overwrites for default role to account for AutoRoom type
+            if member_roles:
+                perms.update(guild.default_role, autoroom_source_config["perms"]["deny"])
+            else:
+                perms.update(guild.default_role, autoroom_source_config["perms"]["access"])
 
         # Bot overwrites
         perms.update(guild.me, self.perms_bot_dest)
@@ -883,6 +899,11 @@ class AutoRoom(
         ).all()  # Returns default values
         if not config["dest_category_id"]:
             return None
+
+        for key in ("role_access_allow", "role_access_deny"):
+            config[key] = [
+                role_id for role_id in config[key] if autoroom_source.guild.get_role(role_id)
+            ]
 
         perms = {
             "allow": {
