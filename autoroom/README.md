@@ -1,75 +1,113 @@
 # AutoRoom
 
-This cog facilitates automatic voice channel creation. When a member joins an AutoRoom Source (voice channel), this cog will move them to a brand new AutoRoom that they have control over. Once everyone leaves the AutoRoom, it is automatically deleted.
+AutoRoom creates a temporary voice channel when a member joins a configured source channel. The member is moved into the new room, which is deleted when it becomes empty.
 
-## For Members - `[p]autoroom`
+This repository is a fork of [AutoRoom by PhasecoreX](https://github.com/PhasecoreX/PCXCogs/tree/master/autoroom).
 
-Once you join an AutoRoom Source, you will be moved into a brand new AutoRoom (voice channel). This is your AutoRoom, you can do whatever you want with it. Use the `[p]autoroom` command to check out all the different things you can do. Some examples include:
+Commands below use `.` as the Red bot prefix. Replace it with your server's configured prefix if different.
 
--   Check its current settings with `[p]autoroom settings`
--   Make it a public AutoRoom with `[p]autoroom public` (everyone can see and join your AutoRoom)
--   Make it a locked AutoRoom with `[p]autoroom locked` (everyone can see, but nobody can join your AutoRoom)
--   Make it a private AutoRoom with `[p]autoroom private` (nobody can see and join your AutoRoom)
--   Kick/ban users (or entire roles) from your AutoRoom with `[p]autoroom deny` (useful for public AutoRooms)
--   Allow users (or roles) into your AutoRoom with `[p]autoroom allow` (useful for locked and private AutoRooms)
--   You can manage the messages in your AutoRooms associated text channel
+## Setup
 
-When everyone leaves your AutoRoom, it will automatically be deleted.
+Create a voice channel to use as the source and a category to hold generated rooms. The source and destination can be in different categories.
 
-## For Server Admins - `[p]autoroomset`
-
-Start by having a voice channel, and a category (the voice channel does not need to be in the category, but it can be if you want). The voice channel will be the "AutoRoom Source", where your members will join and then be moved into their own AutoRoom (voice channel). These AutoRooms will be created in the category that you choose.
-
-```
-[p]autoroomset create <source_voice_channel> <dest_category>
+```text
+.autoroomset create <source_voice_channel> <destination_category>
 ```
 
-This command will guide you through setting up an AutoRoom Source by asking some questions. If you get a warning about missing permissions, take a look at `[p]autoroomset permissions`, grant the missing permissions, and then run the command again. Otherwise, answer the questions, and you'll have a new AutoRoom Source. Give it a try by joining it: if all goes well, you will be moved to a new AutoRoom, where you can do all of the `[p]autoroom` commands.
+The setup wizard asks for a default room type and naming format. After creating the source, join it to test room creation. Run `.autoroomset permissions` if the bot reports missing permissions; `.autoroomset settings` shows configured sources and server-wide access settings.
 
-There are some additional configuration options for AutoRoom Sources that you can set by using `[p]autoroomset modify`. You can also check out `[p]autoroomset access`, which controls whether admins (default yes) or moderators (default no) can see and join private AutoRooms. For an overview of all of your settings, use `[p]autoroomset settings`.
+AutoRoom needs permission to view and connect to the source, move members, and create/manage channels in the destination category. Permission requirements vary with room type and optional text channels; the permissions command reports the specific requirements.
 
-#### Role-Based Permissions
+## Member Commands
 
-By default, new AutoRooms copy permission overwrites from their AutoRoom Source. To use explicit role access rules for a source instead, configure the roles and select role mode:
+After creating a room, AutoRoom posts a command guide in its chat. This uses the room's built-in voice-channel chat, or its separate legacy text channel when that option is enabled. A server-managed room only shows the settings command because it has no member owner.
 
+| Command | Description |
+| --- | --- |
+| `.autoroom settings` | Show room owner, access mode, and current allowed/denied members and roles. Aliases: `about`, `info`. |
+| `.autoroom name <name>` | Rename your room. |
+| `.autoroom bitrate <kbps>` | Set the room bitrate, subject to the server limit. Alias: `kbps`. |
+| `.autoroom users <limit>` | Set the user limit. Use `0` for no limit. Alias: `userlimit`. |
+| `.autoroom public` | Make the room visible and joinable according to its base access settings. |
+| `.autoroom locked` | Keep the room visible but prevent default access from joining. You can still invite people with `allow`. |
+| `.autoroom private` | Hide the room from default access. You can still invite people with `allow`. |
+| `.autoroom allow <member or role>` | Allow a member or role into the room. Alias: `add`. |
+| `.autoroom deny <member or role>` | Deny a member or role. If possible, members who lose access are disconnected. Aliases: `ban`, `block`. |
+| `.autoroom claim` | Claim a room after its owner has left, subject to the claim cooldown. |
+
+Room-management commands are owner-controlled. Server admin, moderator, and configured bot-role access can also grant join access to new rooms, depending on the room settings.
+
+## Admin Commands
+
+These commands require server management permissions.
+
+| Command | Description |
+| --- | --- |
+| `.autoroomset create <source> <category>` | Set up a source channel through the interactive wizard. Aliases: `enable`, `add`. |
+| `.autoroomset remove <source>` | Stop using a voice channel as a source. Aliases: `disable`, `delete`, `del`. |
+| `.autoroomset settings` | Show server access settings and each source's configuration. |
+| `.autoroomset permissions` | Check required and optional bot permissions. Alias: `perms`. |
+| `.autoroomset access admin` | Toggle admin access to newly created locked/private rooms. Enabled by default. |
+| `.autoroomset access mod` | Toggle moderator access to newly created locked/private rooms. Disabled by default. |
+| `.autoroomset access bot add <role>` | Allow members with this bot role into all new rooms. |
+| `.autoroomset access bot remove <role>` | Remove a bot role from the server-wide access list. |
+
+### Source Settings
+
+Use `.autoroomset modify` to change a configured source. `<source>` is its voice channel.
+
+| Command | Description |
+| --- | --- |
+| `.autoroomset modify category <source> <category>` | Change the destination category. |
+| `.autoroomset modify type public\|locked\|private\|server <source>` | Set the default type for new rooms. `server` rooms have no owner. |
+| `.autoroomset modify name username\|game <source>` | Choose a built-in room-name format. |
+| `.autoroomset modify name custom <source> <template>` | Set a custom room-name template. |
+| `.autoroomset modify permissions clone <source>` | Copy permission overwrites from the source channel (default mode). |
+| `.autoroomset modify permissions roles <source>` | Use explicit role rules instead of copying source overwrites. |
+| `.autoroomset modify permissions allow <source> <role>` | Allow a role in new rooms and enable role mode. |
+| `.autoroomset modify permissions deny <source> <role>` | Deny a role in new rooms and enable role mode. |
+| `.autoroomset modify permissions remove <source> <role>` | Remove a role from both role lists. |
+| `.autoroomset modify text set <source> <message>` | Set a template message sent to each new room's chat. |
+| `.autoroomset modify text disable <source>` | Disable the custom message. The built-in command guide remains enabled. |
+| `.autoroomset modify specialperms ownermodify <source>` | Toggle the owner's native Manage Channels permission. |
+| `.autoroomset modify specialperms sendmessage <source>` | Toggle sending messages in the built-in voice-channel chat. |
+| `.autoroomset modify legacytextchannel enable\|disable <source>` | Create or stop creating a separate text channel with each room. |
+| `.autoroomset modify legacytextchannel topic set <source> <topic>` | Set a topic template for the separate text channel. |
+| `.autoroomset modify legacytextchannel topic disable <source>` | Clear the topic template. |
+| `.autoroomset modify defaults` | Explain how source channel settings are inherited. |
+
+### Role Permission Mode
+
+Clone mode remains the default and preserves the existing behavior: source-channel overwrites are copied to new rooms, except `Manage Roles`. The bot must have the relevant permissions allowed in the destination category or server for them to be copied.
+
+Role mode does not copy source overwrites. New rooms start with the configured public, locked, or private access, then apply the source's allow and deny role lists. The source channel still controls who can join the source and create a room. Admin, moderator, bot-role, and room-owner access are added separately when a room is created.
+
+For example, configure role mode and a permitted role with:
+
+```text
+.autoroomset modify permissions allow #CreateRoom @Members
 ```
-[p]autoroomset modify permissions allow <source_voice_channel> <role>
-[p]autoroomset modify permissions deny <source_voice_channel> <role>
-[p]autoroomset modify permissions remove <source_voice_channel> <role>
+
+Adding an allow or deny rule automatically enables role mode. Use `remove` to clear a rule, `roles` to enable role mode without adding one, or `clone` to return to copied overwrites. View the current mode and role lists with `.autoroomset settings`.
+
+When a room owner switches their current room to `.autoroom locked` or `.autoroom private`, the room's explicit overwrites for roles on that source's default allow list are removed. This affects only the current room; the source defaults remain in effect for rooms created later. Owners can still grant specific room access with `.autoroom allow`.
+
+### Member Roles and Hidden Sources
+
+The source channel can also restrict who is allowed to create rooms. If `@everyone` cannot connect to the source, roles allowed to connect there are treated as member roles. Only members with one or more of those roles can use that source. You can also hide the source by denying `@everyone` view access while allowing eligible members to connect.
+
+## Templates
+
+Room names support these variables:
+
+- `{{username}}`: the room owner's username.
+- `{{game}}`: the game the owner is playing, or an empty value.
+- `{{dupenum}}`: an incrementing number used to distinguish duplicate names.
+
+Templates support `if`/`elif`/`else`/`endif` statements and `lower`/`upper` filters. For example:
+
+```text
+{{username}}'s Room{% if dupenum > 1 %} ({{dupenum}}){% endif %}
 ```
 
-Adding an allowed or denied role automatically enables role mode for that source. In role mode, unconfigured source-channel overwrites are not copied; the room's normal public, locked, or private access is used as the baseline, and configured roles are allowed or denied. Admin, moderator, bot-role, and AutoRoom-owner access continue to follow their existing settings. To return to copied permissions, use `[p]autoroomset modify permissions clone <source_voice_channel>`; to enable role mode without adding a rule, use `[p]autoroomset modify permissions roles <source_voice_channel>`.
-
-#### Member Roles and Hidden Sources
-
-The AutoRoom Source will behave in a certain way, depending on what permissions it has. If the `@everyone` role is denied the connect permission (and optionally the view channel permission), the AutoRoom Source and AutoRooms will behave in a member role style. Any roles that are allowed to connect on the AutoRoom Source will be considered the "member roles". Only members of the server with one or more of these roles will be able to utilize these AutoRooms and their Sources.
-
-For hidden AutoRoom Sources, you can deny the view channel permission for the `@everyone` role, but still allow the connect permission. The members won't be able to see the AutoRoom Source, but any AutoRooms it creates they will be able to see (depending on if it isn't a private AutoRoom). Ideally you would have a role that is allowed to see the AutoRoom Source, that role is allowed to create AutoRooms, but then can invite anyone to their AutoRooms.
-
-You can of course do both of these, where the `@everyone` role is denied view channel and connect, and your member role is denied the view channel permission, but is allowed the connect permission. Non-members will never see the AutoRoom Source and AutoRooms, and the members will not see the AutoRoom Source, but will see AutoRooms.
-
-#### Templates
-
-The default AutoRoom name format is based on the AutoRoom Owners username. Using `[p]autoroomset modify name`, you can choose a default format, or you can set a custom format. For custom formats, you have a couple of variables you can use in your template:
-
--   `{{username}}` - The AutoRoom Owners username
--   `{{game}}` - The AutoRoom Owners game they were playing when the AutoRoom was created, or blank if they were not plating a game.
--   `{{dupenum}}` - A number, starting at 1, that will increment when the generated AutoRoom name would be a duplicate of an already existing AutoRoom.
-
-You are also able to use `if`/`elif`/`else`/`endif` statements in order to conditionally show or hide parts of your template. Here are the templates for the two default formats included:
-
--   `username` - `{{username}}'s Room{% if dupenum > 1 %} ({{dupenum}}){% endif %}`
--   `game` - `{{game}}{% if not game %}{{username}}'s Room{% endif %}{% if dupenum > 1 %} ({{dupenum}}){% endif %}`
-
-The username format is pretty self-explanatory: put the username, along with "'s Room" after it. For the game format, we put the game name, and then if there isn't a game, show `{{username}}'s Room` instead. Remember, if no game is being played, `{{game}}` won't return anything.
-
-The last bit of both of these is `{% if dupenum > 1 %} ({{dupenum}}){% endif %}`. With this, we are checking if `dupenum` is greater than 1. If it is, we display ` ({{dupenum}})` at the end of our room name. This way, only duplicate named rooms will ever get a ` (2)`, ` (3)`, etc. appended to them, no ` (1)` will be shown.
-
-Finally, you can use filters in order to format your variables. They are specified by adding a pipe, and then the name of the filter. The following are the currently implemented filters:
-
--   `{{username | lower}}` - Will lowercase the variable, the username in this example
--   `{{game | upper}}` - Will uppercase the variable, the game name in this example
-
-This template format can also be used for the message hint sent to new AutoRooms built in text channels. For that, you can also use this variable:
-
--   `{{mention}}` - The AutoRoom Owners mention
+The same template syntax is available for the custom room-chat message and legacy text-channel topic. The message template also supports `{{mention}}` for the room owner's mention.
