@@ -374,7 +374,7 @@ class AutoRoomCommands(MixinMeta, ABC):
         if not member_or_role:
             # Public/locked/private command
             to_modify = member_roles or [source_channel.guild.default_role]
-            if access == "deny" and asc["permission_mode"] == "roles":
+            if access in ("deny", "lock") and asc["permission_mode"] == "roles":
                 for role_id in asc["role_access_allow"]:
                     role = ctx.guild.get_role(role_id)
                     if role:
