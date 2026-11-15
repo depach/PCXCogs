@@ -100,6 +100,7 @@ class FlashNDash(commands.Cog):
             channel=None,  # channel ID to watch
             channels=[],  # additional channel IDs to watch
             role=None,  # role ID to ping
+            channel_roles={},  # per-channel role ID overrides
             options=list(DEFAULT_OPTIONS),  # minutes offered to the poster
             default_minutes=DEFAULT_MINUTES,  # used if no button is pressed / DMs closed
             duration_mode="dm",  # dm buttons or a duration in the post text
@@ -199,9 +200,10 @@ class FlashNDash(commands.Cog):
 
         # Ping the role
         notify_id = None
+        role_id = settings["channel_roles"].get(str(channel.id), settings["role"])
         role = (
-            guild.get_role(settings["role"])
-            if settings["role"] and settings["role_ping_enabled"]
+            guild.get_role(role_id)
+            if role_id and settings["role_ping_enabled"]
             else None
         )
         if role is not None:
@@ -430,6 +432,33 @@ class FlashNDash(commands.Cog):
         await self.config.guild(ctx.guild).role.set(role.id)
         await ctx.send(f"I'll ping **{role.name}** when someone posts.")
 
+    @fnd.command(name="channelrole")
+    async def fnd_channel_role(
+        self,
+        ctx: commands.Context,
+        channel: discord.TextChannel,
+        role: Optional[discord.Role] = None,
+    ):
+        """Set a channel-specific ping role; omit the role to use the global role."""
+        channel_roles = await self.config.guild(ctx.guild).channel_roles()
+        channel_id = str(channel.id)
+        if role is None:
+            channel_roles.pop(channel_id, None)
+            await self.config.guild(ctx.guild).channel_roles.set(channel_roles)
+            global_role_id = await self.config.guild(ctx.guild).role()
+            global_role = ctx.guild.get_role(global_role_id) if global_role_id else None
+            if global_role:
+                return await ctx.send(
+                    f"{channel.mention} will use the global ping role **{global_role.name}**."
+                )
+            return await ctx.send(
+                f"The role override for {channel.mention} was cleared. No ping role is configured globally."
+            )
+
+        channel_roles[channel_id] = role.id
+        await self.config.guild(ctx.guild).channel_roles.set(channel_roles)
+        await ctx.send(f"Posts in {channel.mention} will ping **{role.name}**.")
+
     @fnd.command(name="roleping", aliases=["ping"])
     async def fnd_role_ping(self, ctx: commands.Context, state: str):
         """Turn role pings on or off without changing the configured role."""
@@ -502,11 +531,17 @@ class FlashNDash(commands.Cog):
         s = await self.config.guild(ctx.guild).all()
         channels = watched_channel_ids(s)
         role = ctx.guild.get_role(s["role"]) if s["role"] else None
+        channel_role_lines = []
+        for channel_id, role_id in s["channel_roles"].items():
+            channel_role = ctx.guild.get_role(role_id)
+            role_name = channel_role.name if channel_role else f"Unknown role ({role_id})"
+            channel_role_lines.append(f"<#{channel_id}>: {role_name}")
         pending = [e for e in await self.config.pending() if e["guild_id"] == ctx.guild.id]
         await ctx.send(
             f"**FlashNDash settings**\n"
             f"Channels: {', '.join(f'<#{channel_id}>' for channel_id in channels) if channels else '*not set*'}\n"
             f"Role: {role.mention if role else '*not set*'}\n"
+            f"Channel role overrides: {'; '.join(channel_role_lines) if channel_role_lines else '*none*'}\n"
             f"Role pings: {'enabled' if s['role_ping_enabled'] else 'disabled'}\n"
             f"Duration mode: {s['duration_mode']}\n"
             f"Options: {', '.join(str(o) for o in s['options'])} minutes\n"
