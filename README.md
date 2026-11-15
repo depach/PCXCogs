@@ -26,6 +26,8 @@ Configure FND with `.fnd settings`. Common setup commands:
 
 Use `.fnd durationmode dm` to return to DM duration buttons, and `.fnd roleping off` to disable role pings globally. FND's command prefix is configurable with the bot.
 
+See the [FND guide](fnd/README.md) for all settings and commands.
+
 ## Install
 
 The examples use `.` as the bot prefix. Replace it with your configured prefix if different.
