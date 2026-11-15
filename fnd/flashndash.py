@@ -48,6 +48,14 @@ def duration_from_text(text: str, default: int) -> int:
     return default
 
 
+def watched_channel_ids(settings: dict) -> list[int]:
+    """Return configured channel IDs, including the legacy single-channel setting."""
+    channel_ids = list(settings["channels"])
+    if settings["channel"] is not None:
+        channel_ids.insert(0, settings["channel"])
+    return list(dict.fromkeys(channel_ids))
+
+
 class DurationView(discord.ui.View):
     """Row of buttons, one per duration option. Only the poster can press them."""
 
@@ -90,6 +98,7 @@ class FlashNDash(commands.Cog):
         self.config = Config.get_conf(self, identifier=8675309144, force_registration=True)
         self.config.register_guild(
             channel=None,  # channel ID to watch
+            channels=[],  # additional channel IDs to watch
             role=None,  # role ID to ping
             options=list(DEFAULT_OPTIONS),  # minutes offered to the poster
             default_minutes=DEFAULT_MINUTES,  # used if no button is pressed / DMs closed
@@ -123,8 +132,8 @@ class FlashNDash(commands.Cog):
         # Ignore joins, pins, boosts, etc.
         if message.type not in (discord.MessageType.default, discord.MessageType.reply):
             return
-        watched = await self.config.guild(message.guild).channel()
-        if watched is None or message.channel.id != watched:
+        settings = await self.config.guild(message.guild).all()
+        if message.channel.id not in watched_channel_ids(settings):
             return
         # Don't treat bot commands (e.g. admins running [p]fnd settings) as posts.
         ctx = await self.bot.get_context(message)
@@ -347,12 +356,70 @@ class FlashNDash(commands.Cog):
     async def fnd_channel(
         self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None
     ):
-        """Set the channel to watch. Run with no argument to disable."""
+        """Set the primary channel. Run with no argument to clear all watched channels."""
         if channel is None:
             await self.config.guild(ctx.guild).channel.set(None)
-            return await ctx.send("Watched channel cleared - FlashNDash is now inactive.")
+            await self.config.guild(ctx.guild).channels.set([])
+            return await ctx.send("All watched channels cleared - FlashNDash is now inactive.")
         await self.config.guild(ctx.guild).channel.set(channel.id)
+        await ctx.send(f"Set {channel.mention} as the primary watched channel.")
+
+    @fnd.group(name="channels", invoke_without_command=True)
+    async def fnd_channels(self, ctx: commands.Context):
+        """List, add, remove, or clear watched channels."""
+        await self._send_watched_channels(ctx)
+
+    async def _send_watched_channels(self, ctx: commands.Context) -> None:
+        """Display all watched text channels."""
+        settings = await self.config.guild(ctx.guild).all()
+        channels = watched_channel_ids(settings)
+        if not channels:
+            await ctx.send("No channels are being watched.")
+            return
+        await ctx.send("Watching: " + ", ".join(f"<#{channel_id}>" for channel_id in channels))
+
+    @fnd_channels.command(name="add")
+    async def fnd_channels_add(
+        self, ctx: commands.Context, channel: discord.TextChannel
+    ):
+        """Add a channel to the watched channels."""
+        settings = await self.config.guild(ctx.guild).all()
+        if channel.id in watched_channel_ids(settings):
+            return await ctx.send(f"Already watching {channel.mention}.")
+        channels = settings["channels"]
+        channels.append(channel.id)
+        await self.config.guild(ctx.guild).channels.set(channels)
         await ctx.send(f"Now watching {channel.mention} for posts.")
+
+    @fnd_channels.command(name="remove")
+    async def fnd_channels_remove(
+        self, ctx: commands.Context, channel: discord.TextChannel
+    ):
+        """Remove a channel from the watched channels."""
+        settings = await self.config.guild(ctx.guild).all()
+        if channel.id not in watched_channel_ids(settings):
+            return await ctx.send(f"{channel.mention} is not being watched.")
+        channels = [
+            channel_id
+            for channel_id in settings["channels"]
+            if channel_id != channel.id
+        ]
+        await self.config.guild(ctx.guild).channels.set(channels)
+        if settings["channel"] == channel.id:
+            await self.config.guild(ctx.guild).channel.set(None)
+        await ctx.send(f"No longer watching {channel.mention}.")
+
+    @fnd_channels.command(name="clear")
+    async def fnd_channels_clear(self, ctx: commands.Context):
+        """Stop watching all channels."""
+        await self.config.guild(ctx.guild).channel.set(None)
+        await self.config.guild(ctx.guild).channels.set([])
+        await ctx.send("All watched channels cleared - FlashNDash is now inactive.")
+
+    @fnd_channels.command(name="list")
+    async def fnd_channels_list(self, ctx: commands.Context):
+        """List watched channels."""
+        await self._send_watched_channels(ctx)
 
     @fnd.command(name="role")
     async def fnd_role(self, ctx: commands.Context, role: Optional[discord.Role] = None):
@@ -433,12 +500,12 @@ class FlashNDash(commands.Cog):
     async def fnd_settings(self, ctx: commands.Context):
         """Show the current settings."""
         s = await self.config.guild(ctx.guild).all()
-        channel = ctx.guild.get_channel(s["channel"]) if s["channel"] else None
+        channels = watched_channel_ids(s)
         role = ctx.guild.get_role(s["role"]) if s["role"] else None
         pending = [e for e in await self.config.pending() if e["guild_id"] == ctx.guild.id]
         await ctx.send(
             f"**FlashNDash settings**\n"
-            f"Channel: {channel.mention if channel else '*not set*'}\n"
+            f"Channels: {', '.join(f'<#{channel_id}>' for channel_id in channels) if channels else '*not set*'}\n"
             f"Role: {role.mention if role else '*not set*'}\n"
             f"Role pings: {'enabled' if s['role_ping_enabled'] else 'disabled'}\n"
             f"Duration mode: {s['duration_mode']}\n"
