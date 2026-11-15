@@ -1,8 +1,8 @@
 {
   "author": ["ukSpeedo"],
   "name": "FlashNDash",
-  "short": "Temporary channel posts that auto-delete after a time the poster chooses.",
-  "description": "Watches a configurable channel, DMs each poster buttons (5/10/15/30 min) asking how long to leave their message up, pings a configurable role, then deletes the message and the ping when time is up.",
+  "short": "Temporary channel posts that auto-delete after a chosen or configured duration.",
+  "description": "Watches a configurable channel, chooses a deletion duration using DM buttons or a duration in the post text, optionally pings a configurable role, then deletes the post and ping when time is up.",
   "tags": ["images", "moderation", "utility"],
   "min_bot_version": "3.5.0",
   "requirements": [],

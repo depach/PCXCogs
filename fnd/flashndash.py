@@ -1,9 +1,9 @@
 """FlashNDash - temporary posts for Red-DiscordBot.
 
 Flow:
-  1. Someone posts ANY message in the configured channel (bots are ignored).
-  2. The bot DMs them with buttons: how many minutes to leave it up?
-  3. The bot posts a message pinging the configured role.
+    1. Someone posts ANY message in the configured channel (bots are ignored).
+    2. The bot selects a duration using DM buttons or a duration in the post text.
+    3. The bot optionally posts a message pinging the configured role.
   4. When time is up, the original message AND the ping message are deleted.
 
 Pending deletions are stored in Config, so they survive bot restarts.
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import textwrap
 import time
 from typing import Optional
@@ -28,10 +29,23 @@ CLEANUP_INTERVAL = 15  # seconds between deletion sweeps
 DEFAULT_OPTIONS = [5, 10, 15, 30]
 DEFAULT_MINUTES = 5
 MAX_OPTIONS = 10
+MAX_DURATION_MINUTES = 10080
+DURATION_PATTERN = re.compile(
+    r"(?<!\w)(\d+)\s*(?:m|min|mins|minute|minutes)\b", re.IGNORECASE
+)
 
 
 def fmt_minutes(minutes: int) -> str:
     return f"{minutes} minute{'s' if minutes != 1 else ''}"
+
+
+def duration_from_text(text: str, default: int) -> int:
+    """Return the first valid minute duration in text, or the configured default."""
+    for match in DURATION_PATTERN.finditer(text):
+        minutes = int(match.group(1))
+        if 1 <= minutes <= MAX_DURATION_MINUTES:
+            return minutes
+    return default
 
 
 class DurationView(discord.ui.View):
@@ -69,7 +83,7 @@ class DurationView(discord.ui.View):
 
 
 class FlashNDash(commands.Cog):
-    """Temporary channel posts that delete themselves after a poster-chosen time."""
+    """Temporary channel posts that delete themselves after a configured duration."""
 
     def __init__(self, bot: Red):
         self.bot = bot
@@ -79,6 +93,8 @@ class FlashNDash(commands.Cog):
             role=None,  # role ID to ping
             options=list(DEFAULT_OPTIONS),  # minutes offered to the poster
             default_minutes=DEFAULT_MINUTES,  # used if no button is pressed / DMs closed
+            duration_mode="dm",  # dm buttons or a duration in the post text
+            role_ping_enabled=True,
         )
         # List of dicts: guild_id, channel_id, image_id, notify_id, delete_at
         # ("image_id" is the ID of the user's original message.)
@@ -174,7 +190,11 @@ class FlashNDash(commands.Cog):
 
         # Ping the role
         notify_id = None
-        role = guild.get_role(settings["role"]) if settings["role"] else None
+        role = (
+            guild.get_role(settings["role"])
+            if settings["role"] and settings["role_ping_enabled"]
+            else None
+        )
         if role is not None:
             content = (
                 f"{role.mention} {author.mention} just posted in {channel.mention} - "
@@ -214,10 +234,13 @@ class FlashNDash(commands.Cog):
                 pass
 
     async def _ask_minutes(self, message: discord.Message, settings: dict) -> tuple:
-        """DM the poster buttons. Returns (minutes, dm_was_sent)."""
+        """Select a duration using the configured mode; return duration and DM status."""
         user = message.author
         options = settings["options"]
         default = settings["default_minutes"]
+
+        if settings["duration_mode"] == "caption":
+            return duration_from_text(message.clean_content, default), True
 
         preview = ""
         if message.clean_content:
@@ -340,6 +363,32 @@ class FlashNDash(commands.Cog):
         await self.config.guild(ctx.guild).role.set(role.id)
         await ctx.send(f"I'll ping **{role.name}** when someone posts.")
 
+    @fnd.command(name="roleping", aliases=["ping"])
+    async def fnd_role_ping(self, ctx: commands.Context, state: str):
+        """Turn role pings on or off without changing the configured role."""
+        state = state.lower()
+        if state not in ("on", "off"):
+            return await ctx.send("Choose `on` or `off`.")
+        enabled = state == "on"
+        await self.config.guild(ctx.guild).role_ping_enabled.set(enabled)
+        await ctx.send(f"Role pings are now {'enabled' if enabled else 'disabled'}.")
+
+    @fnd.command(name="durationmode", aliases=["duration"])
+    async def fnd_duration_mode(self, ctx: commands.Context, mode: str):
+        """Choose DM buttons or duration text in the post caption."""
+        mode = mode.lower()
+        if mode not in ("dm", "caption"):
+            return await ctx.send("Choose `dm` or `caption`.")
+        await self.config.guild(ctx.guild).duration_mode.set(mode)
+        if mode == "caption":
+            message = (
+                "Caption duration mode enabled. Include a duration such as `5m` or `10m` "
+                "in the post text; posts without one use the default."
+            )
+        else:
+            message = "DM button duration mode enabled."
+        await ctx.send(message)
+
     @fnd.command(name="options")
     async def fnd_options(self, ctx: commands.Context, *minutes: int):
         """Set the durations (in minutes) offered to posters.
@@ -347,9 +396,14 @@ class FlashNDash(commands.Cog):
         Example: `[p]fnd options 5 10 15 30`
         """
         opts = sorted(set(minutes))
-        if not opts or len(opts) > MAX_OPTIONS or opts[0] < 1 or opts[-1] > 10080:
+        if (
+            not opts
+            or len(opts) > MAX_OPTIONS
+            or opts[0] < 1
+            or opts[-1] > MAX_DURATION_MINUTES
+        ):
             return await ctx.send(
-                f"Give me 1-{MAX_OPTIONS} values between 1 and 10080, e.g. "
+                f"Give me 1-{MAX_OPTIONS} values between 1 and {MAX_DURATION_MINUTES}, e.g. "
                 f"`{ctx.clean_prefix}fnd options 5 10 15 30`."
             )
         await self.config.guild(ctx.guild).options.set(opts)
@@ -363,7 +417,7 @@ class FlashNDash(commands.Cog):
 
     @fnd.command(name="defaultminutes")
     async def fnd_default(self, ctx: commands.Context, minutes: int):
-        """Set the duration used when a poster doesn't answer or has DMs closed.
+        """Set the default duration when no choice or caption duration is provided.
 
         Must be one of the configured options.
         """
@@ -386,6 +440,8 @@ class FlashNDash(commands.Cog):
             f"**FlashNDash settings**\n"
             f"Channel: {channel.mention if channel else '*not set*'}\n"
             f"Role: {role.mention if role else '*not set*'}\n"
+            f"Role pings: {'enabled' if s['role_ping_enabled'] else 'disabled'}\n"
+            f"Duration mode: {s['duration_mode']}\n"
             f"Options: {', '.join(str(o) for o in s['options'])} minutes\n"
             f"Default: {s['default_minutes']} minutes\n"
             f"Posts awaiting deletion: {len(pending)}",
