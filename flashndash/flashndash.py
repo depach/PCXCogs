@@ -135,7 +135,7 @@ class FlashNDash(commands.Cog):
         settings = await self.config.guild(message.guild).all()
         if message.channel.id not in watched_channel_ids(settings):
             return
-        # Don't treat bot commands (e.g. admins running [p]fnd settings) as posts.
+        # Don't treat bot commands (e.g. admins running [p]flashndash settings) as posts.
         ctx = await self.bot.get_context(message)
         if ctx.valid:
             return
@@ -460,7 +460,7 @@ class FlashNDash(commands.Cog):
     async def fnd_options(self, ctx: commands.Context, *minutes: int):
         """Set the durations (in minutes) offered to posters.
 
-        Example: `[p]fnd options 5 10 15 30`
+        Example: `[p]flashndash options 5 10 15 30`
         """
         opts = sorted(set(minutes))
         if (
@@ -471,7 +471,7 @@ class FlashNDash(commands.Cog):
         ):
             return await ctx.send(
                 f"Give me 1-{MAX_OPTIONS} values between 1 and {MAX_DURATION_MINUTES}, e.g. "
-                f"`{ctx.clean_prefix}fnd options 5 10 15 30`."
+                f"`{ctx.clean_prefix}flashndash options 5 10 15 30`."
             )
         await self.config.guild(ctx.guild).options.set(opts)
         default = await self.config.guild(ctx.guild).default_minutes()
