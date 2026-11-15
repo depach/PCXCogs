@@ -30,6 +30,24 @@ DEFAULT_OPTIONS = [5, 10, 15, 30]
 DEFAULT_MINUTES = 5
 MAX_OPTIONS = 10
 MAX_DURATION_MINUTES = 10080
+MEDIA_EXTENSIONS = (
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".bmp",
+    ".tif",
+    ".tiff",
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".m4v",
+    ".mpeg",
+    ".mpg",
+    ".avi",
+    ".mkv",
+)
+GIF_EXTENSIONS = (".gif", ".gifv")
 DURATION_PATTERN = re.compile(
     r"(?<!\w)(\d+)\s*(?:m|min|mins|minute|minutes)\b", re.IGNORECASE
 )
@@ -54,6 +72,20 @@ def watched_channel_ids(settings: dict) -> list[int]:
     if settings["channel"] is not None:
         channel_ids.insert(0, settings["channel"])
     return list(dict.fromkeys(channel_ids))
+
+
+def has_pingable_media(message: discord.Message) -> bool:
+    """Return whether the message has an uploaded image or video, excluding GIFs."""
+    for attachment in message.attachments:
+        filename = attachment.filename.lower()
+        if filename.endswith(GIF_EXTENSIONS):
+            continue
+        content_type = (attachment.content_type or "").split(";", maxsplit=1)[0].lower()
+        if content_type.startswith(("image/", "video/")):
+            return True
+        if filename.endswith(MEDIA_EXTENSIONS):
+            return True
+    return False
 
 
 class DurationView(discord.ui.View):
@@ -206,7 +238,7 @@ class FlashNDash(commands.Cog):
             if role_id and settings["role_ping_enabled"]
             else None
         )
-        if role is not None:
+        if role is not None and has_pingable_media(message):
             content = (
                 f"{role.mention} {author.mention} just posted in {channel.mention} - "
                 f"[go check it out!]({message.jump_url})\n"
