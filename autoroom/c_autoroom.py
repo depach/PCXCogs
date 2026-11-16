@@ -367,6 +367,12 @@ class AutoRoomCommands(MixinMeta, ABC):
             )
             return False
 
+        protected_roles = await self.get_bot_roles(ctx.guild)
+        if await self.config.guild(ctx.guild).mod_access():
+            protected_roles += await self.bot.get_mod_roles(ctx.guild)
+        if await self.config.guild(ctx.guild).admin_access():
+            protected_roles += await self.bot.get_admin_roles(ctx.guild)
+
         perms = Perms(autoroom_channel.overwrites)
 
         denied_message = ""
@@ -377,7 +383,7 @@ class AutoRoomCommands(MixinMeta, ABC):
             if access in ("deny", "lock") and asc["permission_mode"] == "roles":
                 for role_id in asc["role_access_allow"]:
                     role = ctx.guild.get_role(role_id)
-                    if role:
+                    if role and role not in protected_roles:
                         perms.update(
                             role,
                             {permission: None for permission in asc["perms"]["allow"]},
@@ -429,6 +435,14 @@ class AutoRoomCommands(MixinMeta, ABC):
                 "I don't know if you know this, but that's the server owner... "
                 "I can't deny them from entering your AutoRoom."
             )
+        elif isinstance(member_or_role, discord.Role) and member_or_role in protected_roles:
+            denied_message = "that's a server-wide access role, so I can't deny it from entering your AutoRoom."
+        elif (
+            isinstance(member_or_role, discord.Member)
+            and member_or_role.bot
+            and any(role in protected_roles for role in member_or_role.roles)
+        ):
+            denied_message = "that bot has a server-wide access role, so I can't deny it from entering your AutoRoom."
         elif await self.is_admin_or_admin_role(member_or_role):
             role_suffix = " role" if isinstance(member_or_role, discord.Role) else ""
             denied_message = f"that's an admin{role_suffix}, so I can't deny them from entering your AutoRoom."

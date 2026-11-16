@@ -90,7 +90,7 @@ For example, configure role mode and a permitted role with:
 
 Adding an allow or deny rule automatically enables role mode. Use `remove` to clear a rule, `roles` to enable role mode without adding one, or `clone` to return to copied overwrites. View the current mode and role lists with `.autoroomset settings`.
 
-When a room owner switches their current room to `.autoroom locked` or `.autoroom private`, the room's explicit overwrites for roles on that source's default allow list are removed. This affects only the current room; the source defaults remain in effect for rooms created later. Owners can still grant specific room access with `.autoroom allow`.
+When a room owner switches their current room to `.autoroom locked` or `.autoroom private`, explicit overwrites for default-allowed roles are removed for that room, except for configured bot-access roles and admin/moderator roles enabled through `.autoroomset access`. Those server-wide access roles remain allowed, and owners cannot deny them with `.autoroom deny`. This affects only the current room; source defaults remain in effect for rooms created later. Owners can still grant specific room access with `.autoroom allow`.
 
 ### Member Roles and Hidden Sources
 
