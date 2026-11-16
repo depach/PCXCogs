@@ -456,7 +456,15 @@ class AutoRoomCommands(MixinMeta, ABC):
 
         for target in to_modify:
             if isinstance(target, discord.Member | discord.Role):
-                perms.update(target, asc["perms"][access])
+                if (
+                    not member_or_role
+                    and isinstance(target, discord.Role)
+                    and target in protected_roles
+                    and access in ("deny", "lock")
+                ):
+                    perms.update(target, asc["perms"]["allow"])
+                else:
+                    perms.update(target, asc["perms"][access])
             if isinstance(target, discord.Member):
                 async with self.config.channel(
                     autoroom_channel
